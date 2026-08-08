@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Speedometer</string>
+    <string name="unit_kmh">км/ч</string>
+    <string name="speed_placeholder">—</string>
+</resources>
