@@ -17,22 +17,23 @@ class LocationHelper(context: Context) {
 
     private var locationCallback: LocationCallback? = null
     private var lastValidSpeed: Float? = null
-    private var lastUpdateTime: Long = 0L
 
-    // Thresholds for filtering
-    private val maxAccuracyMeters = 50f
-    private val minUpdateIntervalMs = 500L
-    private val speedSmoothingFactor = 0.35f // light smoothing
+    // More responsive settings for car use
+    private val maxAccuracyMeters = 40f
+    // Very light smoothing — almost instant reaction, still kills strong jitter
+    private val speedSmoothingFactor = 0.55f
 
     @SuppressLint("MissingPermission")
     fun startLocationUpdates(onSpeedUpdate: (Int?) -> Unit) {
         stopLocationUpdates()
 
+        // Fast updates: ~3–5 times per second when possible
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            1000L // 1 second
+            300L // preferred interval 300 ms
         ).apply {
-            setMinUpdateIntervalMillis(500L)
+            setMinUpdateIntervalMillis(150L)   // allow as fast as 150 ms
+            setMaxUpdateDelayMillis(500L)      // don't batch too much
             setMinUpdateDistanceMeters(0f)
             setWaitForAccurateLocation(false)
         }.build()
@@ -52,33 +53,26 @@ class LocationHelper(context: Context) {
     }
 
     private fun processLocation(location: Location, onSpeedUpdate: (Int?) -> Unit) {
-        val now = System.currentTimeMillis()
-
-        // Ignore low-quality locations
+        // Ignore very bad accuracy
         if (location.hasAccuracy() && location.accuracy > maxAccuracyMeters) {
             return
         }
 
-        // Rate limit visual updates slightly
-        if (now - lastUpdateTime < minUpdateIntervalMs && lastValidSpeed != null) {
-            return
-        }
-
-        val speedMps = if (location.hasSpeed()) {
+        val speedMps = if (location.hasSpeed() && location.speed >= 0f) {
             location.speed
         } else {
             0f
         }
 
-        // Convert m/s → km/h
+        // m/s → km/h
         var speedKmh = speedMps * 3.6f
 
-        // Treat very low speeds as stationary (GPS noise)
-        if (speedKmh < 1.2f) {
+        // Kill GPS noise at near-zero speed
+        if (speedKmh < 1.0f) {
             speedKmh = 0f
         }
 
-        // Light exponential smoothing to reduce jitter without lagging too much
+        // Very light exponential smoothing (keeps reaction fast)
         val smoothed = if (lastValidSpeed != null) {
             lastValidSpeed!! * (1f - speedSmoothingFactor) + speedKmh * speedSmoothingFactor
         } else {
@@ -86,7 +80,6 @@ class LocationHelper(context: Context) {
         }
 
         lastValidSpeed = smoothed
-        lastUpdateTime = now
 
         // Round to nearest integer
         val displaySpeed = smoothed.roundToInt()
